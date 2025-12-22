@@ -1,0 +1,56 @@
+---
+- name: Connectivity checks
+  hosts: all
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Gather facts (connectivity)
+      ansible.builtin.setup:
+      tags: [connectivity]
+
+    - name: Ping via Ansible (connectivity)
+      ansible.builtin.ping:
+      tags: [connectivity]
+
+    - name: Show hostname and IPs (connectivity)
+      ansible.builtin.debug:
+        msg:
+          - "inventory_hostname={{ inventory_hostname }}"
+          - "hostname={{ ansible_facts['hostname'] | default('n/a') }}"
+          - "default_ipv4={{ (ansible_facts['default_ipv4']['address'] | default('n/a')) }}"
+      tags: [connectivity]
+
+- name: Private host - NAT + packages
+  hosts: private
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Show egress IP (proves NAT outbound)
+      ansible.builtin.shell: "curl -s https://checkip.amazonaws.com | tr -d '\n'"
+      register: egress_ip
+      changed_when: false
+      tags: [nat]
+
+    - name: Print egress IP
+      ansible.builtin.debug:
+        msg: "egress_ip={{ egress_ip.stdout | default('n/a') }}"
+      tags: [nat]
+
+    - name: Install jq (packages)
+      ansible.builtin.dnf:
+        name: jq
+        state: present
+      tags: [packages]
+
+    - name: Confirm jq installed (packages)
+      ansible.builtin.command: jq --version
+      register: jq_ver
+      changed_when: false
+      tags: [packages]
+
+    - name: Show jq version (packages)
+      ansible.builtin.debug:
+        var: jq_ver.stdout
+      tags: [packages]

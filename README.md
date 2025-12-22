@@ -1,21 +1,28 @@
-# AWS Terraform + Ansible Learning Lab
+# AWS Terraform + Ansible Infrastructure Lab
 
-This repository is a structured learning project that demonstrates how to build a **real-world AWS network and compute architecture using Terraform**, with a clear path toward **Ansible-based configuration management** and **SRE-style automation**.
+This repository demonstrates a **production-grade AWS infrastructure pattern** built with **Terraform**, and validated with **Ansible** using **SRE-style workflows**.
 
-The goal is not just to create infrastructure, but to model **clean separation of concerns**, **secure defaults**, and **scalable patterns** commonly used in production environments.
+The focus is not “getting something working,” but modeling:
+
+- Clean separation of concerns
+- Secure-by-default network design
+- Deterministic, testable automation
+- Clear handoff between infrastructure and configuration layers
+
+This mirrors how real teams structure Terraform + Ansible in practice.
 
 ---
 
 ## Architecture Overview
 
-This project builds a **two-tier AWS VPC architecture**:
+The lab provisions a **two-tier VPC architecture**:
 
-- A **public subnet** with controlled inbound access
-- A **private subnet** with outbound-only internet access via NAT
-- Infrastructure defined entirely in Terraform modules
-- Configuration and lifecycle control designed to integrate cleanly with Ansible
+- Public subnet with tightly scoped inbound access
+- Private subnet with outbound-only internet access via NAT
+- No direct inbound access to private resources
+- Explicit bastion → private access path
 
-### High-level flow
+### High-level traffic flow
 
 ```
 Internet
@@ -24,179 +31,155 @@ Internet Gateway
    |
 Public Subnet
    |  (SSH from trusted IP only)
-Public EC2 Instance
+Bastion EC2
    |
-   |  (SSH allowed only from public instance)
+   |  (SSH allowed only from bastion)
 Private Subnet
    |
 NAT Gateway
    |
-Outbound Internet (updates, package installs, etc.)
+Outbound Internet
 ```
 
 ---
 
-## Terraform Structure
+## Terraform Design
 
-Terraform is split into **reusable modules**, with a thin root configuration responsible for wiring and variable assignment.
+Terraform is split into **small, composable modules**, with a thin root module responsible only for wiring and configuration.
 
 ```
-.
-├── terraform-basic/        # Root module (entry point)
-│   ├── main.tf             # Module composition
-│   ├── variables.tf        # Root-level variables
-│   ├── terraform.tfvars.example
-│   └── provider.tf
+terraform-basic/
+├── main.tf
+├── variables.tf
+├── provider.tf
+└── terraform.tfvars.example
+
+modules/
+├── network/
+│   ├── 01-vpc.tf
+│   ├── 02-subnets.tf
+│   ├── 03-route-tables.tf
+│   ├── 04-igw.tf
+│   ├── 05-public-route.tf
+│   ├── 06-nat-gateway.tf
+│   └── 07-private-route.tf
 │
-├── modules/
-│   ├── network/            # VPC, subnets, routing, IGW, NAT
-│   │   ├── 01-vpc.tf
-│   │   ├── 02-subnets.tf
-│   │   ├── 03-route-tables.tf
-│   │   ├── 04-igw.tf
-│   │   ├── 05-public-default-route.tf
-│   │   ├── 06-nat-gateway.tf
-│   │   ├── 07-private-default-route.tf
-│   │   └── variables.tf
-│   │
-│   └── compute/            # EC2, security groups, SSH keys
-│       ├── 08-ec2-public.tf
-│       ├── 09-ec2-private.tf
-│       └── variables.tf
-│
-├── ansible/                # Future configuration management
-│   ├── inventory/
-│   │   └── README.md
-│   ├── playbooks/
-│   └── roles/
-│
-└── docs/
+└── compute/
+    ├── 08-ec2-public.tf
+    └── 09-ec2-private.tf
 ```
 
 ---
 
-## Network Design
+## Network & Security Model
 
-### VPC
+| Component | CIDR | Purpose |
+|--------|------|---------|
+| VPC | 10.0.0.0/16 | Isolated network |
+| Public subnet | 10.0.1.0/24 | Bastion / NAT |
+| Private subnet | 10.0.2.0/24 | Internal workloads |
 
-- CIDR: `10.0.0.0/16`
-- DNS hostnames and resolution enabled
-
-### Subnets
-
-| Subnet  | CIDR          | Purpose               |
-| ------- | ------------- | --------------------- |
-| Public  | `10.0.1.0/24` | Bastion / entry point |
-| Private | `10.0.2.0/24` | Internal workloads    |
-
-### Routing
-
-- **Public route table**
-  - `0.0.0.0/0 → Internet Gateway`
-- **Private route table**
-  - `0.0.0.0/0 → NAT Gateway`
-- No inbound routes to private subnet
-
-### NAT Gateway
-
-- Deployed in the **public subnet**
-- Uses an Elastic IP
-- Enables outbound internet access for private instances without exposing them
+- Public subnet routes to Internet Gateway
+- Private subnet routes to NAT Gateway
+- No inbound routing to private subnet
 
 ---
 
-## Compute Design
+## Ansible Integration
 
-### Public Instance
+Ansible is used **after Terraform completes** to validate and manage the infrastructure.
 
-- Amazon Linux
-- Public IP assigned
-- SSH allowed **only from a single trusted CIDR**
-- Acts as a controlled jump host
+### Goals
 
-### Private Instance
-
-- No public IP
-- SSH allowed **only from the public instance**
-- Internet access via NAT Gateway
-- Ideal target for Ansible-managed configuration
+- Verify SSH access paths
+- Prove NAT egress works
+- Demonstrate idempotent configuration changes
+- Separate validation from mutation
 
 ---
 
-## Security Principles Demonstrated
+## Repository Layout (Ansible)
 
-- Least-privilege network access
-- No inbound access to private resources
-- SSH restricted by:
-  - Source IP (public)
-  - Security group reference (private)
-- No secrets committed to version control
-- Terraform state and keys ignored via `.gitignore`
+```
+ansible/
+├── inventory/
+│   ├── hosts.ini
+│   └── generate_inventory.py
+├── playbooks/
+│   └── hello.yml
+└── roles/
 
----
-
-## Ansible Integration (Planned)
-
-This repository is intentionally structured to support Ansible in progressive stages:
-
-1. **terraform-basic**
-   - Infrastructure only
-2. **terraform-ansible-simple**
-   - Terraform outputs → static Ansible inventory
-   - Basic configuration (packages, users)
-3. **terraform-ansible-sre**
-   - Dynamic inventory
-   - Idempotent roles
-   - Health checks and validation
-   - Production-style workflows
+ansible.cfg
+terraform-basic/tf-vpc-lab.pem
+```
 
 ---
 
-## Usage (Terraform)
+## Usage
 
-From the root Terraform directory:
+### Apply Terraform
 
-```bash
+```
 cd terraform-basic
-cp terraform.tfvars.example terraform.tfvars
 terraform init
-terraform plan
 terraform apply
 ```
 
-Destroy when finished:
+### Generate inventory
 
-```bash
-terraform destroy
+```
+python3 ansible/inventory/generate_inventory.py
+```
+
+### Fix SSH key permissions
+
+```
+chmod 400 terraform-basic/tf-vpc-lab.pem
 ```
 
 ---
 
-## Learning Objectives
+## Ansible Validation
 
-This project is designed to reinforce:
+### Connectivity (read-only)
 
-- Modular Terraform design
-- AWS networking fundamentals
-- NAT vs IGW behavior
-- Secure SSH patterns
-- Clean handoff between Terraform and Ansible
-- Repo hygiene suitable for real teams
+```
+ansible-playbook ansible/playbooks/hello.yml --tags connectivity
+```
+
+### NAT validation
+
+```
+ansible-playbook ansible/playbooks/hello.yml --tags nat
+```
+
+### Package installation (idempotent)
+
+```
+ansible-playbook ansible/playbooks/hello.yml --tags packages
+```
+
+### Combined validation
+
+```
+ansible-playbook ansible/playbooks/hello.yml --tags nat,packages
+```
 
 ---
 
-## Future Enhancements
+## Why This Matters
 
-- Dynamic Ansible inventory from Terraform outputs
-- GitHub Actions for `plan` and `apply`
-- Remote Terraform state backend
-- Multi-AZ support
-- Load balancer integration
-- SRE-style runbooks and alerts
+This lab demonstrates:
+
+- Real AWS isolation patterns
+- Secure bastion-based access
+- Terraform-to-Ansible handoff
+- Tag-driven, operator-safe automation
+
+This is a strong baseline for production infrastructure work.
 
 ---
 
 ## Disclaimer
 
-This repository is for learning and experimentation. Always review AWS costs before applying infrastructure in real accounts.
-
+This repository is for learning and demonstration purposes. Always review AWS costs and security policies before applying infrastructure in real environments.
