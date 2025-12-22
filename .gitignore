@@ -1,0 +1,44 @@
+# ======================
+# Terraform
+# ======================
+**/.terraform/
+**/.terraform.lock.hcl
+**/terraform.tfstate
+**/terraform.tfstate.*
+terraform.tfvars
+**/*.tfplan
+
+# ======================
+# SSH keys / secrets
+# ======================
+**/*.pem
+**/*.key
+**/*.crt
+
+# ======================
+# Ansible
+# ======================
+**/inventory/*
+!**/inventory/README.md
+**/*.retry
+
+# ======================
+# Logs / crashes
+# ======================
+crash.log
+crash.*.log
+*.log
+
+# ======================
+# OS / Editor
+# ======================
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# ======================
+# Temp / cache
+# ======================
+tmp/
+.cache/
