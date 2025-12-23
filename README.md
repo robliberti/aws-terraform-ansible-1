@@ -4,13 +4,13 @@ This repository demonstrates a **production-grade AWS infrastructure pattern** b
 
 The goal is not simply to provision resources, but to model how real teams design, validate, and operate infrastructure:
 
-- Clear separation of concerns (infra vs configuration)
+- Clear separation of concerns (infrastructure vs configuration)
 - Secure-by-default networking
 - Deterministic, testable automation
-- Safe validation before mutation
+- Validation before mutation
 - A clean Terraform → Ansible handoff
 
-This mirrors how Terraform and Ansible are used together in production DevOps / SRE environments.
+This mirrors how Terraform and Ansible are used together in real DevOps / SRE environments.
 
 ---
 
@@ -18,8 +18,8 @@ This mirrors how Terraform and Ansible are used together in production DevOps / 
 
 The lab provisions a **two-tier AWS VPC architecture**:
 
-- A **public subnet** containing a bastion host
-- A **private subnet** containing internal workloads
+- Public subnet containing a bastion host
+- Private subnet containing internal workloads
 - Outbound-only internet access from private resources via NAT
 - No direct inbound access to private instances
 
@@ -31,7 +31,7 @@ Internet
 Internet Gateway
    |
 Public Subnet
-   |  (SSH from trusted IP only)
+   |  (SSH + HTTP from trusted IP only)
 Bastion EC2
    |
    |  (SSH allowed only from bastion)
@@ -49,7 +49,7 @@ https://www.youtube.com/watch?v=2doSoMN2xvI&t=411s
 
 ## Terraform Design
 
-Terraform is organized into **small, composable modules**, with a thin root module responsible only for wiring and variable assignment.
+Terraform is organized into **small, composable modules**, with a thin root module responsible only for wiring and variables.
 
 ```
 terraform-basic/
@@ -76,15 +76,15 @@ modules/
 ### Network & Security Model
 
 | Component | CIDR | Purpose |
-|---------|------|---------|
+|----------|------|---------|
 | VPC | 10.0.0.0/16 | Isolated network |
 | Public subnet | 10.0.1.0/24 | Bastion / NAT |
 | Private subnet | 10.0.2.0/24 | Internal workloads |
 
 - Public subnet routes to an Internet Gateway
 - Private subnet routes to a NAT Gateway
-- No inbound routes to private subnet
-- SSH access restricted by security groups and source rules
+- No inbound routing to private subnet
+- SSH and HTTP restricted by security groups
 
 ---
 
@@ -113,6 +113,9 @@ ansible/
 │   ├── hello.yml
 │   └── site.yml
 └── roles/
+    ├── baseline/
+    ├── web/
+    └── app/
 
 ansible.cfg
 terraform-basic/tf-vpc-lab.pem
@@ -120,49 +123,48 @@ terraform-basic/tf-vpc-lab.pem
 
 ---
 
-## How to Run This Lab
+## How to Run This Lab (Step-by-Step)
 
 All commands are run from the **repository root** unless otherwise noted.
 
-### 1. Provision infrastructure with Terraform
+---
+
+### 1. Provision Infrastructure with Terraform
 
 ```
 cd terraform-basic
 terraform init
+terraform plan
 terraform apply
 ```
 
 This creates:
 
-- A VPC with public and private subnets
-- A bastion EC2 instance with a public IP
-- A private EC2 instance reachable only via bastion
-- A NAT Gateway for private egress
-- An SSH key written locally for Ansible access
+- VPC with public and private subnets
+- Bastion EC2 with public IP
+- Private EC2 reachable only via bastion
+- NAT Gateway for private egress
+- SSH key written locally for Ansible
 
 ---
 
-### 2. Generate Ansible inventory from Terraform outputs
+### 2. Generate Ansible Inventory from Terraform Outputs
 
 ```
+cd ..
 python3 ansible/inventory/generate_inventory.py
+cat ansible/inventory/hosts.ini
 ```
 
-This produces:
-
-```
-ansible/inventory/hosts.ini
-```
-
-The inventory encodes:
+The generated inventory encodes:
 
 - Direct SSH access to the bastion
-- ProxyCommand-based SSH access to the private host via bastion
-- Shared SSH identity and user configuration
+- ProxyCommand-based SSH to the private host
+- Shared SSH user and identity
 
 ---
 
-### 3. Fix SSH key permissions
+### 3. Fix SSH Key Permissions
 
 ```
 chmod 400 terraform-basic/tf-vpc-lab.pem
@@ -170,65 +172,59 @@ chmod 400 terraform-basic/tf-vpc-lab.pem
 
 ---
 
-## Ansible Validation & Testing
+## Ansible Validation (hello.yml)
 
-### Connectivity checks (read-only)
+`hello.yml` is intentionally **safe and validation-focused**.
+
+---
+
+### Connectivity Checks (Read-Only)
 
 ```
 ansible-playbook ansible/playbooks/hello.yml --tags connectivity
 ```
 
-**Expected result**
-
-- SSH succeeds to bastion and private host
-- Hostnames and private IPs are printed
-- No system changes are made
+Expected:
+- SSH to bastion and private host succeeds
+- Hostnames and private IPs displayed
+- No changes made
 
 ---
 
-### NAT validation (private host only)
+### NAT Validation (Private Host Only)
 
 ```
 ansible-playbook ansible/playbooks/hello.yml --tags nat
 ```
 
-**Expected result**
-
-- Runs only on the private host
-- Displays a public egress IP
-- Confirms NAT Gateway outbound access
+Expected:
+- Runs only on private host
+- Displays public egress IP
+- Confirms NAT outbound access
 
 ---
 
-### Package installation (idempotent)
+### Package Validation (Idempotent)
 
 ```
 ansible-playbook ansible/playbooks/hello.yml --tags packages
 ```
 
-**Expected result**
-
-- `jq` installs on first run (changed=1)
-- Subsequent runs are idempotent (changed=0)
-- Package version is printed
+Expected:
+- jq installs on first run
+- Subsequent runs show no changes
 
 ---
 
-### Combined validation
+### Combined Validation
 
 ```
 ansible-playbook ansible/playbooks/hello.yml --tags nat,packages
 ```
 
-This represents a full private-host validation path:
-
-- SSH → bastion → private
-- NAT egress
-- Controlled configuration change
-
 ---
 
-### Optional ad-hoc connectivity checks
+### Optional Ad-Hoc Connectivity Checks
 
 ```
 ansible -i ansible/inventory/hosts.ini public -m ping
@@ -237,71 +233,71 @@ ansible -i ansible/inventory/hosts.ini private -m ping -vv
 
 ---
 
-## From Validation to Configuration
+## Configuration Management (site.yml)
 
-The `hello.yml` playbook is intentionally limited to **validation and proof-of-access**:
-
-- SSH connectivity
-- Bastion → private hop correctness
-- NAT egress verification
-- Safe, minimal package installation
-
-Once these checks pass, the repository transitions to **real configuration management** via a standard Ansible entrypoint.
+Once validation passes, `site.yml` becomes the **authoritative configuration entry point**.
 
 ---
 
-## Ansible Entry Point (`site.yml`)
+### Apply Baseline Configuration (Safe)
 
-`site.yml` is the canonical playbook for configuring hosts after validation.
+```
+ansible-playbook ansible/playbooks/site.yml --tags baseline
+```
 
-It is designed to:
+Applies:
+- Baseline packages
+- Time sync (chrony)
+- MOTD banner
 
-- Apply a **baseline role** to all hosts
-- Apply role-specific configuration by inventory group
-- Support selective runs via tags and limits
+---
 
-### Apply full configuration
+### Apply Web Role (Public Host)
+
+```
+ansible-playbook ansible/playbooks/site.yml --tags web
+```
+
+Applies:
+- nginx install and enablement
+- Simple index page
+
+Verify:
+```
+curl http://<public_ec2_ip>
+```
+
+---
+
+### Apply App Role (Private Host)
+
+```
+ansible-playbook ansible/playbooks/site.yml --tags app
+```
+
+Applies:
+- Simple internal application
+- systemd-managed service
+
+---
+
+### Full Configuration Run
 
 ```
 ansible-playbook ansible/playbooks/site.yml
 ```
 
-### Apply baseline only (safe, minimal)
-
-```
-ansible-playbook ansible/playbooks/site.yml --limit all --tags baseline
-```
-
-Use this when:
-
-- Bootstrapping new instances
-- Verifying baseline state
-- Making low-risk changes (packages, users, hardening)
-
 ---
 
-## Design Philosophy
+### Dry-Run / Safety Check
 
-This two-stage model mirrors real production workflows:
+```
+ansible-playbook ansible/playbooks/site.yml --check --diff
+```
 
-| Stage | Purpose |
-|-----|--------|
-| `hello.yml` | Validation, diagnostics, safe checks |
-| `site.yml` | Declarative system configuration |
-
-Key principles:
-
-- Validation before mutation
-- Tags control blast radius
-- Inventory defines intent
-- Roles express responsibility
-
-This structure scales cleanly to:
-
-- Multiple environments
-- Additional roles (web, app, db)
-- CI/CD pipelines
-- SRE-style preflight checks
+Expected:
+- Zero changes
+- Confirms idempotency
 
 ---
 
@@ -313,6 +309,24 @@ When finished:
 cd terraform-basic
 terraform destroy
 ```
+
+---
+
+## Design Philosophy
+
+This project intentionally mirrors production workflows:
+
+| Stage | Purpose |
+|------|--------|
+| Terraform | Infrastructure provisioning |
+| hello.yml | Validation & diagnostics |
+| site.yml | Declarative configuration |
+
+Key principles:
+- Validation before mutation
+- Tags limit blast radius
+- Inventory defines intent
+- Roles express responsibility
 
 ---
 
