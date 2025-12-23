@@ -39,6 +39,14 @@ resource "aws_security_group" "public_sg" {
     cidr_blocks = [var.my_ip_cidr]
   }
 
+  ingress {
+    description = "HTTP from my IP"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [var.my_ip_cidr]
+  }
+
   egress {
     description = "All outbound"
     from_port   = 0

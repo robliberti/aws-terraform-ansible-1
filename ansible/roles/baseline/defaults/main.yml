@@ -1,0 +1,12 @@
+baseline_packages_common:
+  - vim
+  - git
+  - jq
+  - unzip
+  - tar
+
+baseline_packages_amzn2023:
+  - curl-minimal
+
+baseline_packages_other:
+  - curl

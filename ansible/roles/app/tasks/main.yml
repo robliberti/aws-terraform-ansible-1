@@ -1,0 +1,56 @@
+---
+- name: Ensure python is installed
+  ansible.builtin.dnf:
+    name: python3
+    state: present
+
+- name: Create app directory
+  ansible.builtin.file:
+    path: /opt/simpleapp
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create app index
+  ansible.builtin.copy:
+    dest: /opt/simpleapp/index.html
+    content: |
+      <html>
+      <body>
+        <h1>Private App Host</h1>
+        <p>inventory_hostname={{ inventory_hostname }}</p>
+        <p>hostname={{ ansible_facts['hostname'] | default('n/a') }}</p>
+      </body>
+      </html>
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install systemd unit for simple app server
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/simpleapp.service
+    content: |
+      [Unit]
+      Description=Simple App (python http.server)
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      WorkingDirectory=/opt/simpleapp
+      ExecStart=/usr/bin/python3 -m http.server {{ app_listen_port }} --bind {{ app_bind_addr }}
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Enable and start simpleapp
+  ansible.builtin.service:
+    name: simpleapp
+    enabled: true
+    state: started

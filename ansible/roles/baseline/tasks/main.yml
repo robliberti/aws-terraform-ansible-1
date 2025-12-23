@@ -1,0 +1,28 @@
+---
+- name: Install baseline packages
+  ansible.builtin.dnf:
+    name: >-
+      {{
+        baseline_packages_common
+        + (
+            baseline_packages_amzn2023
+            if (ansible_distribution == 'Amazon' and ansible_distribution_major_version | int == 2023)
+            else baseline_packages_other
+          )
+      }}
+    state: present
+    update_cache: true
+
+- name: Enable and start chronyd
+  ansible.builtin.service:
+    name: chronyd
+    enabled: true
+    state: started
+
+- name: Install MOTD
+  ansible.builtin.template:
+    src: motd.j2
+    dest: /etc/motd
+    owner: root
+    group: root
+    mode: "0644"

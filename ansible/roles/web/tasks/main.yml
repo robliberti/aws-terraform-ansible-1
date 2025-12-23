@@ -1,0 +1,26 @@
+---
+- name: Install nginx
+  ansible.builtin.dnf:
+    name: nginx
+    state: present
+
+- name: Create simple index.html
+  ansible.builtin.copy:
+    dest: /usr/share/nginx/html/index.html
+    content: |
+      <html>
+      <body>
+        <h1>Public Web Host</h1>
+        <p>inventory_hostname={{ inventory_hostname }}</p>
+        <p>hostname={{ ansible_facts['hostname'] | default('n/a') }}</p>
+      </body>
+      </html>
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable and start nginx
+  ansible.builtin.service:
+    name: nginx
+    enabled: true
+    state: started

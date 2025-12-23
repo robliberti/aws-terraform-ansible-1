@@ -1,0 +1,4 @@
+Managed by Ansible (role=baseline)
+Environment: {{ motd_environment }}
+Host: {{ inventory_hostname }}
+Hostname: {{ ansible_facts['hostname'] | default('n/a') }}

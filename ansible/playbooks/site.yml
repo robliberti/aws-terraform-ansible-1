@@ -1,0 +1,24 @@
+---
+- name: Baseline everywhere
+  hosts: all
+  gather_facts: true
+  become: true
+  roles:
+    - role: baseline
+      tags: [baseline]
+
+- name: Public host web role
+  hosts: public
+  gather_facts: true
+  become: true
+  roles:
+    - role: web
+      tags: [web]
+
+- name: Private host app role
+  hosts: private
+  gather_facts: true
+  become: true
+  roles:
+    - role: app
+      tags: [app]
