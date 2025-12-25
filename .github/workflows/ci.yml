@@ -21,17 +21,21 @@ jobs:
 
       - name: Terraform fmt (advisory)
         run: terraform fmt -check -diff -recursive || echo "Terraform formatting differences detected"
-      - name: Terraform init
-        run: terraform init -input=false
+
+      - name: Terraform init (no backend)
+        run: terraform init -input=false -backend=false
 
       - name: Terraform validate
         run: terraform validate
 
-      # Plan without AWS creds will fail if your config needs AWS provider calls.
-      # If it fails, keep the steps above and add AWS auth later.
-      - name: Terraform plan
-        run: terraform plan -input=false -no-color
-        continue-on-error: true
+      # Terraform plan is intentionally disabled in CI.
+      # Running plan requires AWS credentials and 
+      # environment-specific variables in terraform-basic/terraform.tfvars,
+      # which are not provided in this public CI pipeline.
+      # Plan should be run locally or in a secured workflow.
+      #
+      # - name: Terraform plan (advisory)
+      #   run: terraform plan -input=false -no-color || echo "Skipping plan: missing vars or credentials"
 
   ansible:
     runs-on: ubuntu-latest
