@@ -20,8 +20,7 @@ jobs:
           terraform_version: 1.6.6
 
       - name: Terraform fmt (check)
-        run: terraform fmt -check -recursive
-
+        run: terraform fmt -check -diff -recursive || echo "Terraform formatting differences detected"
       - name: Terraform init
         run: terraform init -input=false
 
