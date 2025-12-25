@@ -27,6 +27,14 @@
     group: root
     mode: "0644"
 
+- name: Create health endpoint
+  ansible.builtin.copy:
+    dest: /opt/simpleapp/healthz
+    content: "ok\n"
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Install systemd unit for simple app server
   ansible.builtin.copy:
     dest: /etc/systemd/system/simpleapp.service
@@ -47,10 +55,21 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Reload systemd
+  register: simpleapp_unit
 
-- name: Enable and start simpleapp
+- name: Reload systemd if unit changed
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: simpleapp_unit is defined and simpleapp_unit.changed
+
+- name: Ensure simpleapp is running
   ansible.builtin.service:
     name: simpleapp
     enabled: true
     state: started
+
+- name: Restart simpleapp if unit changed
+  ansible.builtin.service:
+    name: simpleapp
+    state: restarted
+  when: simpleapp_unit is defined and simpleapp_unit.changed

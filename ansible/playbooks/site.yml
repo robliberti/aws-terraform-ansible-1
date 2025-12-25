@@ -22,3 +22,11 @@
   roles:
     - role: app
       tags: [app]
+
+- name: Post-deploy validation
+  hosts: public
+  gather_facts: false
+  tags: [health, validate]
+  tasks:
+    - name: Validate backend reachability and health
+      ansible.builtin.import_tasks: ../roles/web/tasks/healthcheck.yml

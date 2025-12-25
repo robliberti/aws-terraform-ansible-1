@@ -11,6 +11,14 @@ resource "aws_security_group" "private_sg" {
     security_groups = [aws_security_group.public_sg.id]
   }
 
+  ingress {
+    description     = "Simpleapp from public instance (reverse proxy)"
+    from_port       = var.app_port
+    to_port         = var.app_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.public_sg.id]
+  }
+
   egress {
     description = "All outbound (goes to NAT via route table)"
     from_port   = 0

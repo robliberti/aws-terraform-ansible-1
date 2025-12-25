@@ -1,0 +1,30 @@
+---
+- name: Check that nginx can reach the backend directly (private app)
+  ansible.builtin.uri:
+    url: "http://{{ hostvars[groups['private'][0]].ansible_host }}:{{ hostvars[groups['private'][0]].app_listen_port }}/healthz"
+    return_content: true
+    status_code: 200
+    timeout: 2
+  register: backend_health
+  changed_when: false
+
+- name: Assert healthcheck task produced a result
+  ansible.builtin.assert:
+    that:
+      - backend_health is defined
+    fail_msg: >-
+      backend_health is undefined.
+      The healthcheck task may have been skipped due to tags, conditions,
+      or a refactor that changed the register name.
+
+- name: Assert backend health check looks healthy
+  ansible.builtin.assert:
+    that:
+      - backend_health.status == 200
+      - "'ok' in (backend_health.content | default('') | lower)"
+    fail_msg: >-
+      Backend health check failed from bastion.
+      Expected HTTP 200 and body 'ok'.
+      Got status={{ backend_health.status | default('n/a') }},
+      body={{ backend_health.content | default('') | trim }}.
+    success_msg: "Backend health check OK from bastion."

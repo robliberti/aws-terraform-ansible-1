@@ -21,3 +21,7 @@ variable "public_subnet_id" {
 variable "private_subnet_id" {
   type = string
 }
+
+variable "app_port" {
+  type    = number
+}

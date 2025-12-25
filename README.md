@@ -9,53 +9,89 @@ The goal is not simply to provision resources, but to model how real teams desig
 - Deterministic, testable automation
 - Validation before mutation
 - A clean Terraform → Ansible handoff
+- Idempotent, repeatable execution
 
 This mirrors how Terraform and Ansible are used together in real DevOps / SRE environments.
 
----
+⸻
 
 ## Architecture Overview
 
-The lab provisions a **two-tier AWS VPC architecture**:
+The lab provisions a **two-tier AWS VPC architecture** with a **public reverse proxy** and a **private backend service**.
 
-- Public subnet containing a bastion host
-- Private subnet containing internal workloads
-- Outbound-only internet access from private resources via NAT
-- No direct inbound access to private instances
+Key properties
+	•	Public EC2 runs nginx as a reverse proxy
+	•	Private EC2 runs a simple internal application (simpleapp)
+	•	Private instance has no public IP
+	•	All application traffic flows through the public host
+	•	Private services are validated but never exposed directly
 
 ### High-level traffic flow
 
 ```
-Internet
-   |
-Internet Gateway
-   |
-Public Subnet
-   |  (SSH + HTTP from trusted IP only)
-Bastion EC2
-   |
-   |  (SSH allowed only from bastion)
-Private Subnet
-   |
-NAT Gateway
-   |
-Outbound Internet
+                   Internet
+                      |
+                      |  HTTP/80 (restricted by security group)
+                      v
+                Internet Gateway
+                      |
+                Public Subnet
+                      |
+        +--------------------------------+
+        |  Public EC2 (nginx + bastion)  |
+        |  - SSH from trusted IP only    |
+        |  - Reverse proxy (/app → 8080) |
+        +--------------------------------+
+                      |
+                      |  SSH (22) and HTTP (8080)
+                      |  allowed only from public SG
+                      v
+                Private Subnet
+                      |
+        +--------------------------------+
+        |   Private EC2 (simpleapp)      |
+        |   - No public IP               |
+        |   - Listens on :8080           |
+        |   - /healthz endpoint          |
+        +--------------------------------+
+                      |
+                      |  Outbound-only traffic
+                      v
+                NAT Gateway
+                      |
+                   Internet
 ```
 
 **Architecture inspiration:**  
 https://www.youtube.com/watch?v=2doSoMN2xvI&t=411s
 
----
+Outbound-only internet access from the private subnet is provided via a NAT Gateway.
 
-## Terraform Design
+⸻
 
-Terraform is organized into **small, composable modules**, with a thin root module responsible only for wiring and variables.
+Network & Security Model
 
-```
+Component	CIDR	Purpose
+VPC	10.0.0.0/16	Isolated network
+Public subnet	10.0.1.0/24	Reverse proxy / bastion
+Private subnet	10.0.2.0/24	Internal workloads
+
+Security guarantees:
+	•	No inbound routing to the private subnet
+	•	SSH to private host allowed only from the public host
+	•	HTTP to public host restricted by CIDR
+	•	Private app port never exposed publicly
+
+⸻
+
+Terraform Design
+
+Terraform is organized into small, composable modules, with a thin root module responsible only for wiring and variables.
+
 terraform-basic/
 ├── main.tf
 ├── variables.tf
-├── provider.tf
+├── terraform_basic_outputs.tf
 └── terraform.tfvars.example
 
 modules/
@@ -64,89 +100,81 @@ modules/
 │   ├── 02-subnets.tf
 │   ├── 03-route-tables.tf
 │   ├── 04-igw.tf
-│   ├── 05-public-route.tf
+│   ├── 05-public-default-route.tf
 │   ├── 06-nat-gateway.tf
-│   └── 07-private-route.tf
+│   └── 07-private-default-route.tf
 │
 └── compute/
     ├── 08-ec2-public.tf
-    └── 09-ec2-private.tf
-```
+    ├── 09-ec2-private.tf
+    ├── variables.tf
+    └── outputs.tf
 
-### Network & Security Model
+Terraform outputs provide:
+	•	Public and private IPs
+	•	Application port
+	•	SSH key path
 
-| Component | CIDR | Purpose |
-|----------|------|---------|
-| VPC | 10.0.0.0/16 | Isolated network |
-| Public subnet | 10.0.1.0/24 | Bastion / NAT |
-| Private subnet | 10.0.2.0/24 | Internal workloads |
+These outputs are consumed by Ansible inventory generation.
 
-- Public subnet routes to an Internet Gateway
-- Private subnet routes to a NAT Gateway
-- No inbound routing to private subnet
-- SSH and HTTP restricted by security groups
+⸻
 
----
+Ansible Integration
 
-## Ansible Integration
+Ansible is used after Terraform completes to validate and manage the infrastructure.
 
-Ansible is used **after Terraform completes** to validate and manage the infrastructure.
+Responsibilities
+	•	Generate inventory deterministically from Terraform outputs
+	•	Enforce secure SSH access paths
+	•	Configure baseline OS settings
+	•	Configure nginx reverse proxy
+	•	Deploy a private backend application
+	•	Validate application reachability and health
 
-### Goals
+⸻
 
-- Verify SSH access paths
-- Prove bastion → private connectivity
-- Validate NAT egress
-- Demonstrate idempotent configuration changes
-- Separate validation from mutation
+Repository Layout (Ansible)
 
----
-
-## Repository Layout (Ansible)
-
-```
 ansible/
 ├── inventory/
-│   ├── hosts.ini
-│   └── generate_inventory.py
+│   ├── hosts.ini               # generated (not committed)
+│   ├── generate_inventory.py
+│   └── group_vars/
+│       └── private.yml         # generated (not committed)
 ├── playbooks/
-│   ├── hello.yml
-│   └── site.yml
+│   ├── hello.yml               # validation-only
+│   └── site.yml                # authoritative configuration
 └── roles/
     ├── baseline/
     ├── web/
     └── app/
 
 ansible.cfg
-terraform-basic/tf-vpc-lab.pem
-```
 
----
 
-## How to Run This Lab (Step-by-Step)
+⸻
 
-All commands are run from the **repository root** unless otherwise noted.
+How to Run This Lab
 
----
+All commands are run from the repository root.
 
-### 1. Provision Infrastructure with Terraform
+⸻
 
-```
+1. Provision Infrastructure with Terraform
+
 cd terraform-basic
 terraform init
 terraform plan
 terraform apply
-```
 
 This creates:
+	•	VPC with public and private subnets
+	•	Public EC2 (reverse proxy / bastion)
+	•	Private EC2 (internal application)
+	•	NAT Gateway for private egress
+	•	SSH key written locally for Ansible
 
-- VPC with public and private subnets
-- Bastion EC2 with public IP
-- Private EC2 reachable only via bastion
-- NAT Gateway for private egress
-- SSH key written locally for Ansible
-
----
+⸻
 
 ### 2. Generate Ansible Inventory from Terraform Outputs
 
@@ -156,181 +184,127 @@ python3 ansible/inventory/generate_inventory.py
 cat ansible/inventory/hosts.ini
 ```
 
-The generated inventory encodes:
+This generates:
+	•	ansible/inventory/hosts.ini
+	•	ansible/inventory/group_vars/private.yml
 
-- Direct SSH access to the bastion
-- ProxyCommand-based SSH to the private host
-- Shared SSH user and identity
+Both are intentionally not committed.> **Note:** If SSH fails due to key permission errors, ensure the private key has correct permissions:
+>
+> ```bash
+> chmod 400 terraform-basic/tf-vpc-lab.pem
+> ```
 
----
+⸻
 
-### 3. Fix SSH Key Permissions
+### 3. Apply Configuration + Validation (One Command)
 
 ```
-chmod 400 terraform-basic/tf-vpc-lab.pem
+ansible-playbook ansible/playbooks/site.yml --tags baseline,web,app,validate
 ```
 
----
+This performs, in order:
+	1.	Baseline OS configuration
+	2.	nginx reverse proxy configuration
+	3.	Private backend application deployment
+	4.	Post-deploy health validation
 
 ## Ansible Validation (hello.yml)
 
-`hello.yml` is intentionally **safe and validation-focused**.
+⸻
 
----
+Application & Health Checks
 
-### Connectivity Checks (Read-Only)
+Internal application
+	•	Runs on the private host
+	•	Listens on port 8080
+	•	Managed via systemd
 
-```
-ansible-playbook ansible/playbooks/hello.yml --tags connectivity
-```
+Health endpoint
+	•	Private backend:
 
-Expected:
-- SSH to bastion and private host succeeds
-- Hostnames and private IPs displayed
-- No changes made
+http://<private_ip>:8080/healthz
 
----
 
-### NAT Validation (Private Host Only)
+	•	Public proxy (external):
 
-```
-ansible-playbook ansible/playbooks/hello.yml --tags nat
-```
+http://<public_ip>/app/healthz
 
-Expected:
-- Runs only on private host
-- Displays public egress IP
-- Confirms NAT outbound access
 
----
 
-### Package Validation (Idempotent)
+Expected response:
 
-```
-ansible-playbook ansible/playbooks/hello.yml --tags packages
-```
+HTTP 200
+ok
 
-Expected:
-- jq installs on first run
-- Subsequent runs show no changes
+Validation is enforced via Ansible assertions.
 
----
+⸻
 
-### Combined Validation
+### Validation Model
 
-```
-ansible-playbook ansible/playbooks/hello.yml --tags nat,packages
-```
+Post-deploy validation ensures:
+	•	The private backend is reachable from the public host
+	•	The health endpoint returns HTTP 200
+	•	The response body matches expected content
 
----
+If any check fails, the playbook exits with failure.
 
-### Optional Ad-Hoc Connectivity Checks
+Validation is:
+	•	Read-only
+	•	Idempotent
+	•	Explicitly ordered after deployment
 
-```
-ansible -i ansible/inventory/hosts.ini public -m ping
-ansible -i ansible/inventory/hosts.ini private -m ping -vv
-```
+⸻
 
----
-
-## Configuration Management (site.yml)
-
-Once validation passes, `site.yml` becomes the **authoritative configuration entry point**.
-
----
-
-### Apply Baseline Configuration (Safe)
-
-```
-ansible-playbook ansible/playbooks/site.yml --tags baseline
-```
-
-Applies:
-- Baseline packages
-- Time sync (chrony)
-- MOTD banner
-
----
-
-### Apply Web Role (Public Host)
-
-```
-ansible-playbook ansible/playbooks/site.yml --tags web
-```
-
-Applies:
-- nginx install and enablement
-- Simple index page
-
-Verify:
-```
-curl http://<public_ec2_ip>
-```
-
----
-
-### Apply App Role (Private Host)
-
-```
-ansible-playbook ansible/playbooks/site.yml --tags app
-```
-
-Applies:
-- Simple internal application
-- systemd-managed service
-
----
-
-### Full Configuration Run
-
-```
-ansible-playbook ansible/playbooks/site.yml
-```
-
----
-
-### Dry-Run / Safety Check
-
-```
-ansible-playbook ansible/playbooks/site.yml --check --diff
-```
-
-Expected:
-- Zero changes
-- Confirms idempotency
-
----
-
-## Cleanup
+### Cleanup
 
 When finished:
 
-```
 cd terraform-basic
 terraform destroy
-```
 
----
 
-## Design Philosophy
+⸻
+
+### Design Philosophy
 
 This project intentionally mirrors production workflows:
 
-| Stage | Purpose |
-|------|--------|
-| Terraform | Infrastructure provisioning |
-| hello.yml | Validation & diagnostics |
-| site.yml | Declarative configuration |
+| Stage                | Purpose                     |
+|----------------------|-----------------------------|
+| Terraform            | Infrastructure provisioning |
+| Inventory generation | Deterministic handoff       |
+| Baseline             | OS consistency              |
+| Web/App roles        | Declarative configuration   |
+| Validation           | Enforced correctness        |
 
 Key principles:
-- Validation before mutation
-- Tags limit blast radius
-- Inventory defines intent
-- Roles express responsibility
+	•	Validation before mutation
+	•	Tags limit blast radius
+	•	Inventory defines intent
+	•	Roles express responsibility
+	•	Assertions enforce reality
 
----
+⸻
 
-## Disclaimer
+Disclaimer
 
-This repository is for learning and demonstration purposes.  
+This repository is for learning and demonstration purposes.
 Always review AWS costs and security policies before applying infrastructure in real environments.
+
+⸻
+
+### Mindset
+
+“I validate infrastructure changes with Terraform plans, regenerate inventory deterministically, verify connectivity before mutation, apply configuration through role-scoped Ansible runs, and enforce correctness with post-deploy assertions.”
+
+⸻
+
+Next Logical Upgrades
+
+Each of these is interview-grade:
+	•	nginx hardening (TLS, headers, SELinux)
+	•	Replace bastion with ALB + private targets
+	•	Blue/green or canary backend deployment
+	•	CI pipeline (GitHub Actions): terraform plan + ansible --check
+	•	Environment splits (dev/stage/prod)
