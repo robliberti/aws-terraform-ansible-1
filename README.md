@@ -332,3 +332,5 @@ Each of these is interview-grade:
 	•	Replace bastion with ALB + private targets
 	•	nginx hardening (TLS, headers, SELinux)
 	•	Blue/green or canary backend deployment
+
+# test CI
