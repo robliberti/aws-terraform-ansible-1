@@ -154,13 +154,13 @@ ansible.cfg
 
 ⸻
 
-How to Run This Lab
+## How to Run This Lab
 
 All commands are run from the repository root.
 
 ⸻
 
-1. Provision Infrastructure with Terraform
+### 1. Provision Infrastructure with Terraform
 
 cd terraform-basic
 terraform init
@@ -256,6 +256,31 @@ Validation is:
 
 ⸻
 
+## Continuous Integration (CI)
+
+This repository includes a **GitHub Actions CI pipeline** that continuously validates
+infrastructure and configuration code without touching live AWS resources.
+
+The CI pipeline performs:
+
+- Terraform formatting checks (`terraform fmt -check`)
+- Terraform initialization and validation (`terraform init`, `terraform validate`)
+- Non-blocking Terraform plan execution (safe without credentials)
+- Ansible syntax validation for all playbooks (`site.yml`, `hello.yml`)
+
+### CI Design Goals
+
+- Catch errors before merge
+- Enforce formatting and structure
+- Avoid secrets or cloud credentials in CI
+- Maintain a clean Terraform → Ansible handoff
+- Mirror real SRE / Platform Engineering workflows
+
+This ensures the repository remains **safe to apply**, **deterministic**, and
+**reviewable** as it evolves.
+
+⸻
+
 ### Cleanup
 
 When finished:
@@ -287,7 +312,7 @@ Key principles:
 
 ⸻
 
-Disclaimer
+### Disclaimer
 
 This repository is for learning and demonstration purposes.
 Always review AWS costs and security policies before applying infrastructure in real environments.
@@ -303,8 +328,7 @@ Always review AWS costs and security policies before applying infrastructure in 
 Next Logical Upgrades
 
 Each of these is interview-grade:
-	•	nginx hardening (TLS, headers, SELinux)
-	•	Replace bastion with ALB + private targets
-	•	Blue/green or canary backend deployment
-	•	CI pipeline (GitHub Actions): terraform plan + ansible --check
 	•	Environment splits (dev/stage/prod)
+	•	Replace bastion with ALB + private targets
+	•	nginx hardening (TLS, headers, SELinux)
+	•	Blue/green or canary backend deployment

@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform-basic
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Terraform fmt (check)
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+      # Plan without AWS creds will fail if your config needs AWS provider calls.
+      # If it fails, keep the steps above and add AWS auth later.
+      - name: Terraform plan
+        run: terraform plan -input=false -no-color
+        continue-on-error: true
+
+  ansible:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install ansible
+
+      - name: Ansible syntax check (site.yml)
+        run: ansible-playbook --syntax-check ansible/playbooks/site.yml
+
+      - name: Ansible syntax check (hello.yml)
+        run: ansible-playbook --syntax-check ansible/playbooks/hello.yml
