@@ -1,10 +1,10 @@
 module "network" {
-  source      = "../modules/network"
+  source      = "../../../modules/network"
   name_prefix = var.name_prefix
 }
 
 module "compute" {
-  source            = "../modules/compute"
+  source            = "../../../modules/compute"
   name_prefix       = var.name_prefix
   instance_type     = var.instance_type
   my_ip_cidr        = var.my_ip_cidr

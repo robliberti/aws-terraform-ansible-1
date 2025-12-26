@@ -7,6 +7,7 @@
     timeout: 2
   register: backend_health
   changed_when: false
+  when: not ansible_check_mode
 
 - name: Assert healthcheck task produced a result
   ansible.builtin.assert:
@@ -16,6 +17,7 @@
       backend_health is undefined.
       The healthcheck task may have been skipped due to tags, conditions,
       or a refactor that changed the register name.
+  when: not ansible_check_mode
 
 - name: Assert backend health check looks healthy
   ansible.builtin.assert:
@@ -28,3 +30,4 @@
       Got status={{ backend_health.status | default('n/a') }},
       body={{ backend_health.content | default('') | trim }}.
     success_msg: "Backend health check OK from bastion."
+  when: not ansible_check_mode

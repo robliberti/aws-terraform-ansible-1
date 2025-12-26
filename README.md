@@ -1,6 +1,6 @@
 # AWS Terraform + Ansible Infrastructure Lab
 
-This repository demonstrates a **production-grade AWS infrastructure pattern** built with **Terraform** and validated with **Ansible** using **SRE-style workflows**.
+This repository demonstrates a **production-grade AWS infrastructure pattern** built with **Terraform** and validated with **Ansible**, following **SRE-style workflows**.
 
 The goal is not simply to provision resources, but to model how real teams design, validate, and operate infrastructure:
 
@@ -13,18 +13,18 @@ The goal is not simply to provision resources, but to model how real teams desig
 
 This mirrors how Terraform and Ansible are used together in real DevOps / SRE environments.
 
-⸻
+---
 
 ## Architecture Overview
 
 The lab provisions a **two-tier AWS VPC architecture** with a **public reverse proxy** and a **private backend service**.
 
-Key properties
-	•	Public EC2 runs nginx as a reverse proxy
-	•	Private EC2 runs a simple internal application (simpleapp)
-	•	Private instance has no public IP
-	•	All application traffic flows through the public host
-	•	Private services are validated but never exposed directly
+Key properties:
+- Public EC2 runs nginx as a reverse proxy
+- Private EC2 runs a simple internal application (`simpleapp`)
+- Private instance has **no public IP**
+- All application traffic flows through the public host
+- Private services are validated but never exposed directly
 
 ### High-level traffic flow
 
@@ -37,11 +37,11 @@ Key properties
                       |
                 Public Subnet
                       |
-        +--------------------------------+
-        |  Public EC2 (nginx + bastion)  |
-        |  - SSH from trusted IP only    |
-        |  - Reverse proxy (/app → 8080) |
-        +--------------------------------+
+        +--------------------------------------------+
+        |  Public EC2 (nginx reverse proxy + bastion) |
+        |  - SSH from trusted IP only                 |
+        |  - Reverse proxy (/app → 8080)              |
+        +--------------------------------------------+
                       |
                       |  SSH (22) and HTTP (8080)
                       |  allowed only from public SG
@@ -67,233 +67,300 @@ https://www.youtube.com/watch?v=2doSoMN2xvI&t=411s
 
 Outbound-only internet access from the private subnet is provided via a NAT Gateway.
 
-⸻
+---
 
-Network & Security Model
+## Network & Security Model
 
-Component	CIDR	Purpose
-VPC	10.0.0.0/16	Isolated network
-Public subnet	10.0.1.0/24	Reverse proxy / bastion
-Private subnet	10.0.2.0/24	Internal workloads
+| Component       | CIDR           | Purpose              |
+|-----------------|----------------|----------------------|
+| VPC             | 10.0.0.0/16    | Isolated network     |
+| Public subnet   | 10.0.1.0/24    | Reverse proxy / SSH  |
+| Private subnet  | 10.0.2.0/24    | Internal workloads   |
 
 Security guarantees:
-	•	No inbound routing to the private subnet
-	•	SSH to private host allowed only from the public host
-	•	HTTP to public host restricted by CIDR
-	•	Private app port never exposed publicly
+- No inbound routing to the private subnet
+- SSH to private host allowed **only from the public host**
+- HTTP to public host restricted by CIDR
+- Private app port never exposed publicly
 
-⸻
+---
 
-Terraform Design
+## Terraform Design (Environment-Based)
 
-Terraform is organized into small, composable modules, with a thin root module responsible only for wiring and variables.
+Terraform is **environment-scoped**, not monolithic.
 
-terraform-basic/
-├── main.tf
-├── variables.tf
-├── terraform_basic_outputs.tf
-└── terraform.tfvars.example
+Each environment is isolated with its own state, variables, and outputs:
 
+```
+terraform/
+└── envs/
+    ├── dev/
+    ├── stage/
+    └── prod/
+```
+
+Terraform is organized into composable modules:
+
+```
 modules/
 ├── network/
-│   ├── 01-vpc.tf
-│   ├── 02-subnets.tf
-│   ├── 03-route-tables.tf
-│   ├── 04-igw.tf
-│   ├── 05-public-default-route.tf
-│   ├── 06-nat-gateway.tf
-│   └── 07-private-default-route.tf
-│
+│   ├── vpc, subnets, routes, igw, nat
 └── compute/
-    ├── 08-ec2-public.tf
-    ├── 09-ec2-private.tf
-    ├── variables.tf
-    └── outputs.tf
+    ├── public EC2
+    ├── private EC2
+    ├── security groups
+```
 
-Terraform outputs provide:
-	•	Public and private IPs
-	•	Application port
-	•	SSH key path
+Each environment exposes outputs required by Ansible:
+- Public instance public IP
+- Public instance private IP
+- Private instance private IP
+- Application port
+- SSH private key path
 
-These outputs are consumed by Ansible inventory generation.
+These outputs are consumed **deterministically** by Ansible inventory generation.
 
-⸻
+---
 
-Ansible Integration
+## Ansible Integration
 
-Ansible is used after Terraform completes to validate and manage the infrastructure.
+Ansible runs **after Terraform completes** and is responsible for:
 
-Responsibilities
-	•	Generate inventory deterministically from Terraform outputs
-	•	Enforce secure SSH access paths
-	•	Configure baseline OS settings
-	•	Configure nginx reverse proxy
-	•	Deploy a private backend application
-	•	Validate application reachability and health
+- Inventory generation from Terraform outputs
+- Secure SSH access paths
+- Baseline OS configuration
+- nginx reverse proxy configuration
+- Private backend application deployment
+- Post-deploy validation and health checks
 
-⸻
+Ansible never guesses infrastructure — it **reads Terraform state**.
 
-Repository Layout (Ansible)
+`generate_inventory.py` reads Terraform outputs for the selected environment and emits an Ansible inventory and group variables without hardcoding IPs or hostnames.
 
+---
+
+## Repository Layout (Ansible)
+
+```
 ansible/
 ├── inventory/
-│   ├── hosts.ini               # generated (not committed)
-│   ├── generate_inventory.py
-│   └── group_vars/
-│       └── private.yml         # generated (not committed)
+│   ├── envs/
+│   │   ├── dev/
+│   │   ├── stage/
+│   │   └── prod/
+│   └── generate_inventory.py
 ├── playbooks/
-│   ├── hello.yml               # validation-only
-│   └── site.yml                # authoritative configuration
+│   ├── hello.yml        # validation-only
+│   └── site.yml         # authoritative config
 └── roles/
     ├── baseline/
     ├── web/
     └── app/
+```
 
-ansible.cfg
+Generated files are intentionally **not committed**.
 
-
-⸻
+---
 
 ## How to Run This Lab
 
 All commands are run from the repository root.
 
-⸻
+All commands are shown explicitly to mirror real operational workflows and to make validation steps auditable and repeatable.
 
-### 1. Provision Infrastructure with Terraform
+---
 
-cd terraform-basic
-terraform init
-terraform plan
-terraform apply
+## 1. Provision Infrastructure (per environment)
 
-This creates:
-	•	VPC with public and private subnets
-	•	Public EC2 (reverse proxy / bastion)
-	•	Private EC2 (internal application)
-	•	NAT Gateway for private egress
-	•	SSH key written locally for Ansible
+> Note: Public IP values may change on every `terraform apply`.
 
-⸻
+First, determine your current public IP (used for SG restrictions):
 
-### 2. Generate Ansible Inventory from Terraform Outputs
-
-```
-cd ..
-python3 ansible/inventory/generate_inventory.py
-cat ansible/inventory/hosts.ini
+```bash
+curl checkip.amazonaws.com
 ```
 
-This generates:
-	•	ansible/inventory/hosts.ini
-	•	ansible/inventory/group_vars/private.yml
+Update the `allowed_cidr` variable in each environment’s tfvars file to your current public IP using /32 CIDR notation:
 
-Both are intentionally not committed.> **Note:** If SSH fails due to key permission errors, ensure the private key has correct permissions:
->
-> ```bash
-> chmod 400 terraform-basic/tf-vpc-lab.pem
-> ```
-
-⸻
-
-### 3. Apply Configuration + Validation (One Command)
-
-```
-ansible-playbook ansible/playbooks/site.yml --tags baseline,web,app,validate
+```hcl
+allowed_cidr = "X.X.X.X/32"
 ```
 
-This performs, in order:
-	1.	Baseline OS configuration
-	2.	nginx reverse proxy configuration
-	3.	Private backend application deployment
-	4.	Post-deploy health validation
+Files to update:
+- terraform/envs/dev/dev.tfvars
+- terraform/envs/stage/stage.tfvars
+- terraform/envs/prod/prod.tfvars
 
-## Ansible Validation (hello.yml)
+### DEV
 
-⸻
+```bash
+terraform -chdir=terraform/envs/dev init
+terraform -chdir=terraform/envs/dev apply
+```
 
-Application & Health Checks
+### STAGE
 
-Internal application
-	•	Runs on the private host
-	•	Listens on port 8080
-	•	Managed via systemd
+```bash
+terraform -chdir=terraform/envs/stage init
+terraform -chdir=terraform/envs/stage apply
+```
 
-Health endpoint
-	•	Private backend:
+### PROD
 
-http://<private_ip>:8080/healthz
+```bash
+terraform -chdir=terraform/envs/prod init
+terraform -chdir=terraform/envs/prod apply
+```
 
+Verify outputs:
 
-	•	Public proxy (external):
+```bash
+terraform -chdir=terraform/envs/dev output public_instance_public_ip
+terraform -chdir=terraform/envs/stage output public_instance_public_ip
+terraform -chdir=terraform/envs/prod output public_instance_public_ip
+```
 
-http://<public_ip>/app/healthz
+---
 
+## 2. Generate Ansible Inventory (per environment)
 
+```bash
+python3 ansible/inventory/generate_inventory.py dev
+python3 ansible/inventory/generate_inventory.py stage
+python3 ansible/inventory/generate_inventory.py prod
+```
 
-Expected response:
+Validate connectivity:
 
-HTTP 200
+```bash
+ansible -i ansible/inventory/envs/dev/hosts.ini   public  -m ping
+ansible -i ansible/inventory/envs/dev/hosts.ini   private -m ping
+
+ansible -i ansible/inventory/envs/stage/hosts.ini public  -m ping
+ansible -i ansible/inventory/envs/stage/hosts.ini private -m ping
+
+ansible -i ansible/inventory/envs/prod/hosts.ini  public  -m ping
+ansible -i ansible/inventory/envs/prod/hosts.ini  private -m ping
+```
+
+---
+
+## 3. Apply Configuration + Validation
+
+```bash
+ansible-playbook -i ansible/inventory/envs/dev/hosts.ini   ansible/playbooks/site.yml --tags baseline,web,app,validate
+ansible-playbook -i ansible/inventory/envs/stage/hosts.ini ansible/playbooks/site.yml --tags baseline,web,app,validate
+ansible-playbook -i ansible/inventory/envs/prod/hosts.ini  ansible/playbooks/site.yml --tags baseline,web,app,validate
+```
+
+---
+
+> Note: Public IPs are assigned dynamically by AWS and will change after each `terraform destroy` / `terraform apply`. Always retrieve the current value using `terraform output` before running curl checks.
+
+## Runtime Validation (External)
+
+### Host identity for each environment
+
+```bash
+curl http://<PUBLIC_IP>/app/ | grep hostname
+```
+
+### Health checks for each environment
+
+```bash
+curl -sS -i http://<PUBLIC_IP>/app/healthz | head
+```
+
+Expected:
+```
+HTTP/1.1 200 OK
 ok
+```
 
-Validation is enforced via Ansible assertions.
+---
 
-⸻
+## Dry Run / Idempotency Validation
 
-### Validation Model
+```bash
+ansible-playbook -i ansible/inventory/envs/dev/hosts.ini   ansible/playbooks/site.yml --check --diff --tags baseline,web,app,validate
+ansible-playbook -i ansible/inventory/envs/stage/hosts.ini ansible/playbooks/site.yml --check --diff --tags baseline,web,app,validate
+```
 
-Post-deploy validation ensures:
-	•	The private backend is reachable from the public host
-	•	The health endpoint returns HTTP 200
-	•	The response body matches expected content
+---
 
-If any check fails, the playbook exits with failure.
+## Cleanup
 
-Validation is:
-	•	Read-only
-	•	Idempotent
-	•	Explicitly ordered after deployment
+Destroy **only the environment you intend**:
 
-⸻
+```bash
+terraform -chdir=terraform/envs/dev destroy
+terraform -chdir=terraform/envs/stage destroy
+terraform -chdir=terraform/envs/prod destroy
+```
 
-## Continuous Integration (CI)
+---
 
-This repository includes a **GitHub Actions CI pipeline** that continuously validates
-infrastructure and configuration code without touching live AWS resources.
+## Troubleshooting & Diagnostics
 
-The CI pipeline performs:
+Direct SSH access is not required for normal operation. Use the commands below only for debugging.
 
-- Terraform formatting checks (`terraform fmt -check`)
-- Terraform initialization and validation (`terraform init`, `terraform validate`)
-- Non-blocking Terraform plan execution (safe without credentials)
-- Ansible syntax validation for all playbooks (`site.yml`, `hello.yml`)
+SSH to the public host (bastion):
 
-### CI Design Goals
+```bash
+ssh -i terraform/envs/dev/tf-vpc-lab-dev.pem ec2-user@<public_ip>
+```
 
-- Catch errors before merge
-- Enforce formatting and structure
-- Avoid secrets or cloud credentials in CI
-- Maintain a clean Terraform → Ansible handoff
-- Mirror real SRE / Platform Engineering workflows
+> SSH key paths are environment-specific (`tf-vpc-lab-<env>.pem`).
 
-This ensures the repository remains **safe to apply**, **deterministic**, and
-**reviewable** as it evolves.
+SSH to the private host (via bastion):
 
-⸻
+```bash
+ssh -i terraform/envs/dev/tf-vpc-lab-dev.pem \
+  -o ProxyCommand="ssh -W %h:%p ec2-user@<public_ip>" \
+  ec2-user@<private_ip>
+```
 
-### Cleanup
+These commands mirror the SSH path used internally by Ansible.
 
-When finished:
+Direct SSH is intentionally minimized. All configuration and validation is expected to be performed via Ansible and HTTP health checks.
 
-cd terraform-basic
-terraform destroy
+> Tip: If SSH stops working unexpectedly, re-run `curl checkip.amazonaws.com` and confirm the value still matches your `*.tfvars` files.
 
+---
 
-⸻
+## Optional: Makefile Convenience Wrapper
 
-### Design Philosophy
+A `Makefile` is provided in the repository root to wrap the exact commands shown below into repeatable, environment-scoped targets.
 
-This project intentionally mirrors production workflows:
+The Makefile:
+- Does NOT introduce new behavior
+- Does NOT hide Terraform or Ansible commands
+- Exists only to reduce typing and prevent mistakes
+
+All targets map 1:1 to the commands documented in this README.
+
+Examples:
+
+```bash
+make ip
+make dev-apply
+make dev-inv
+make dev-ping
+make dev-ansible
+make dev-health
+make dev-check
+```
+
+Production safety guard:
+
+```bash
+make prod-apply CONFIRM=YES
+make prod-destroy CONFIRM=YES
+```
+
+---
+
+## Design Philosophy
 
 | Stage                | Purpose                     |
 |----------------------|-----------------------------|
@@ -304,31 +371,21 @@ This project intentionally mirrors production workflows:
 | Validation           | Enforced correctness        |
 
 Key principles:
-	•	Validation before mutation
-	•	Tags limit blast radius
-	•	Inventory defines intent
-	•	Roles express responsibility
-	•	Assertions enforce reality
+- Validation before mutation
+- Tags limit blast radius
+- Inventory defines intent
+- Roles express responsibility
+- Assertions enforce reality
 
-⸻
+---
 
-### Disclaimer
+## Next Logical Upgrades
 
-This repository is for learning and demonstration purposes.
-Always review AWS costs and security policies before applying infrastructure in real environments.
-
-⸻
-
-### Mindset
-
-“I validate infrastructure changes with Terraform plans, regenerate inventory deterministically, verify connectivity before mutation, apply configuration through role-scoped Ansible runs, and enforce correctness with post-deploy assertions.”
-
-⸻
-
-Next Logical Upgrades
-
-Each of these is interview-grade:
-	•	Environment splits (dev/stage/prod)
-	•	Replace bastion with ALB + private targets
-	•	nginx hardening (TLS, headers, SELinux)
-	•	Blue/green or canary backend deployment
+Interview-grade extensions:
+- Environment safety rails (explicit prod confirmations for `terraform/envs/prod` + prod Ansible inventory)
+- ALB replacing public EC2/nginx (ALB → private targets, per-environment naming)
+- TLS hardening (either ALB-terminated TLS or nginx TLS + headers)
+- Canary or blue/green backend deployments (target groups or multiple private backends)
+- CI policy gates on prod changes (protect `terraform/envs/prod/**`)
+- Cost controls (auto-expire `terraform/envs/dev`)
+- Repo hygiene (remove stale references to deleted Terraform roots; keep scripts/docs aligned to `terraform/envs/<env>`)

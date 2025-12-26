@@ -1,5 +1,5 @@
-# Root outputs to support Ansible inventory generation.
-# Place this file in terraform-basic/outputs.tf
+# Terraform outputs for this environment
+# Consumed by Ansible inventory generation
 
 output "public_instance_public_ip" {
   value = module.compute.public_instance_public_ip
