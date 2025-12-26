@@ -19,7 +19,8 @@ jobs:
           terraform_version: 1.6.6
 
       - name: Terraform fmt (advisory)
-        run: terraform fmt -check -diff -recursive || echo "Terraform formatting differences detected"
+        continue-on-error: true
+        run: terraform fmt -check -diff -recursive
 
       - name: Terraform init + validate (dev)
         working-directory: terraform/envs/dev
