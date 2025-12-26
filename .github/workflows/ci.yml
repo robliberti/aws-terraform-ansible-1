@@ -11,6 +11,11 @@ jobs:
     defaults:
       run:
         shell: bash
+
+    strategy:
+      matrix:
+        env: [ dev, stage, prod ]
+
     steps:
       - uses: actions/checkout@v4
 
@@ -19,35 +24,20 @@ jobs:
           terraform_version: 1.6.6
 
       - name: Terraform fmt (advisory)
-        continue-on-error: true
-        run: terraform fmt -check -diff -recursive
+        run: terraform fmt -check -diff -recursive || true
 
-      - name: Terraform init + validate (dev)
-        working-directory: terraform/envs/dev
+      - name: Terraform init + validate (${{ matrix.env }})
+        working-directory: terraform/envs/${{ matrix.env }}
         run: |
           terraform init -input=false -backend=false
           terraform validate
 
-      - name: Terraform init + validate (stage)
-        working-directory: terraform/envs/stage
-        run: |
-          terraform init -input=false -backend=false
-          terraform validate
-
-      - name: Terraform init + validate (prod)
-        working-directory: terraform/envs/prod
-        run: |
-          terraform init -input=false -backend=false
-          terraform validate
-
-      # Terraform plan is intentionally disabled in CI.
-      # Running plan requires AWS credentials and environment-specific variables
-      # (terraform/envs/<env>/*.tfvars), which are not provided in this public CI pipeline.
-      # Plan should be run locally or in a secured workflow.
+      # Terraform plan intentionally disabled in CI
+      # Requires credentials and env-specific tfvars
       #
-      # - name: Terraform plan (advisory) (dev)
-      #   working-directory: terraform/envs/dev
-      #   run: terraform plan -input=false -no-color || echo "Skipping plan: missing vars or credentials"
+      # - name: Terraform plan (advisory)
+      #   working-directory: terraform/envs/${{ matrix.env }}
+      #   run: terraform plan -input=false -no-color || true
 
   ansible:
     runs-on: ubuntu-latest
