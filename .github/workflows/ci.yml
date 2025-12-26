@@ -11,7 +11,6 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: terraform-basic
     steps:
       - uses: actions/checkout@v4
 
@@ -22,19 +21,31 @@ jobs:
       - name: Terraform fmt (advisory)
         run: terraform fmt -check -diff -recursive || echo "Terraform formatting differences detected"
 
-      - name: Terraform init (no backend)
-        run: terraform init -input=false -backend=false
+      - name: Terraform init + validate (dev)
+        working-directory: terraform/envs/dev
+        run: |
+          terraform init -input=false -backend=false
+          terraform validate
 
-      - name: Terraform validate
-        run: terraform validate
+      - name: Terraform init + validate (stage)
+        working-directory: terraform/envs/stage
+        run: |
+          terraform init -input=false -backend=false
+          terraform validate
+
+      - name: Terraform init + validate (prod)
+        working-directory: terraform/envs/prod
+        run: |
+          terraform init -input=false -backend=false
+          terraform validate
 
       # Terraform plan is intentionally disabled in CI.
-      # Running plan requires AWS credentials and 
-      # environment-specific variables in terraform-basic/terraform.tfvars,
-      # which are not provided in this public CI pipeline.
+      # Running plan requires AWS credentials and environment-specific variables
+      # (terraform/envs/<env>/*.tfvars), which are not provided in this public CI pipeline.
       # Plan should be run locally or in a secured workflow.
       #
-      # - name: Terraform plan (advisory)
+      # - name: Terraform plan (advisory) (dev)
+      #   working-directory: terraform/envs/dev
       #   run: terraform plan -input=false -no-color || echo "Skipping plan: missing vars or credentials"
 
   ansible:
