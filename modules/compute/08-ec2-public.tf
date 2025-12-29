@@ -15,17 +15,6 @@ resource "local_file" "private_key_pem" {
   file_permission = "0400"
 }
 
-# Find a current Amazon Linux AMI
-data "aws_ami" "al2023" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["al2023-ami-*-x86_64"]
-  }
-}
-
 resource "aws_security_group" "public_sg" {
   name        = "${var.name_prefix}-public-sg"
   description = "Allow SSH from my IP"

@@ -1,3 +1,4 @@
+# Network-scoped data sources (region, AZs)
 data "aws_region" "current" {}
 
 data "aws_availability_zones" "available" {
