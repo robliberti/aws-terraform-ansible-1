@@ -1,0 +1,10 @@
+name_prefix   = "tf-vpc-lab-stage"
+instance_type = "t3.micro"
+
+# CIDR allowed to access the public EC2 instance (SSH + HTTP)
+# Obtain your current public IP with:
+#   curl checkip.amazonaws.com
+# Update this value whenever your IP changes.
+my_ip_cidr    = "32.221.137.209/32"
+
+app_port      = 8080

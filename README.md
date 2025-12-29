@@ -122,6 +122,47 @@ These outputs are consumed **deterministically** by Ansible inventory generation
 
 ---
 
+## Dynamic AWS Region & Availability Zone Resolution
+
+To reduce configuration drift and environment-specific hardcoding, this project uses
+**Terraform data sources** to dynamically resolve AWS metadata such as:
+
+- Current AWS region
+- Available availability zones
+
+Instead of passing `aws_region` explicitly via `*.tfvars`, Terraform relies on
+standard AWS provider resolution:
+
+- `AWS_REGION` / `AWS_DEFAULT_REGION` environment variables
+- `~/.aws/config` (via `aws configure`)
+- Instance metadata (when running inside AWS)
+
+This mirrors how Terraform is typically used in real environments and avoids
+duplicating region configuration across multiple files.
+
+### How this works
+
+The **network module** is responsible for discovering regional context:
+
+- `data.aws_region.current` determines the active AWS region
+- `data.aws_availability_zones.available` discovers usable AZs
+- A local value selects the first two AZs for subnet placement
+
+These values are owned by the network module and exposed via module outputs.
+Higher-level environments (dev / stage / prod) consume these outputs rather than
+redefining region or AZ logic themselves.
+
+This keeps:
+- Environment code thin
+- Regional concerns centralized
+- Module boundaries clean and intentional
+
+### Environment consistency (dev / stage / prod)
+
+This pattern is applied **identically** across all environments:
+
+---
+
 ## Ansible Integration
 
 Ansible runs **after Terraform completes** and is responsible for:
@@ -379,6 +420,39 @@ Key principles:
 
 ---
 
+## Why environment safety rails exist (and why they matter)
+
+This lab intentionally adds **production safety rails** even though it’s “just a demo,” because the real-world failure
+mode in Terraform isn’t syntax — it’s **running the right command in the wrong place**.
+
+Most real outages aren’t caused by bad code — they’re caused by:
+- Applying to the wrong environment
+- Applying from the wrong branch
+- Applying against the wrong AWS account or region
+- Running destructive commands without realizing the blast radius
+
+To model how mature teams prevent those mistakes, production-scoped targets in this repo are protected by explicit guardrails.
+
+### Enforced production guardrails
+
+For production targets (e.g., `make prod-apply`, `make prod-destroy`), the Makefile enforces:
+
+- **Explicit confirmation** (`CONFIRM=YES`) for mutating or destructive actions
+- **Branch safety** (must be on git branch `main`)
+- **AWS identity safety** (must match the expected AWS Account ID via `aws sts get-caller-identity`)
+- **Region safety** (must match the expected AWS region, e.g. `us-east-1`)
+- **Plan/apply discipline** (production apply requires a saved plan: `prod-plan → prod-apply`)
+
+These checks fail fast **before Terraform or Ansible executes**, preventing accidental production changes.
+
+This mirrors real-world practices such as:
+- Protected environments
+- Change approval workflows
+- Identity-aware automation
+- Separation between planning and execution
+
+The intent is not to slow engineers down, but to make **unsafe actions impossible by default**.
+
 ## Next Logical Upgrades
 
 Interview-grade extensions:
@@ -388,4 +462,12 @@ Interview-grade extensions:
 - Canary or blue/green backend deployments (target groups or multiple private backends)
 - CI policy gates on prod changes (protect `terraform/envs/prod/**`)
 - Cost controls (auto-expire `terraform/envs/dev`)
-- Repo hygiene (remove stale references to deleted Terraform roots; keep scripts/docs aligned to `terraform/envs/<env>`)
+
+### What I’d do next (practical order)
+
+If I were continuing this project, I would implement the following in this order:
+
+1. **Terraform variable validation** (fast win, improves safety and clarity)
+2. **Remote state + locking** (major reliability and collaboration improvement)
+3. **Require `CONFIRM=YES` for prod Ansible runs** (aligns infra + config safety)
+4. **CI policy guard on `terraform/envs/prod/**`** (prevents unreviewed prod changes)

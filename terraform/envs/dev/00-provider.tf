@@ -17,5 +17,9 @@ terraform {
 }
 
 provider "aws" {
-  region = var.aws_region
+  # Region intentionally omitted.
+  # Terraform will use standard AWS resolution:
+  # - AWS_REGION / AWS_DEFAULT_REGION env vars, or
+  # - ~/.aws/config (aws configure), or
+  # - instance metadata (if running on AWS)
 }

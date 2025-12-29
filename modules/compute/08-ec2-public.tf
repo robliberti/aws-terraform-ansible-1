@@ -68,15 +68,3 @@ resource "aws_instance" "public" {
 
   tags = { Name = "${var.name_prefix}-public-ec2" }
 }
-
-output "public_instance_public_ip" {
-  value = aws_instance.public.public_ip
-}
-
-output "public_instance_private_ip" {
-  value = aws_instance.public.private_ip
-}
-
-output "ssh_private_key_file" {
-  value = local_file.private_key_pem.filename
-}

@@ -39,7 +39,3 @@ resource "aws_instance" "private" {
 
   tags = { Name = "${var.name_prefix}-private-ec2" }
 }
-
-output "private_instance_private_ip" {
-  value = aws_instance.private.private_ip
-}

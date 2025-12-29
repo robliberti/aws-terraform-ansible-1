@@ -8,6 +8,13 @@
 terraform.tfvars
 **/*.tfplan
 
+# Terraform plan artifacts
+.terraform-plans/
+
+# Local overrides or experiments
+*.local.tf
+*.local.tfvars
+
 # ======================
 # SSH keys / secrets
 # ======================
